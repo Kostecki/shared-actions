@@ -1,0 +1,43 @@
+name: Deploy via Komodo
+description: Connects via Tailscale and triggers a Komodo stack update
+
+inputs:
+  ts-oauth-client-id:
+    required: true
+    description: The OAuth client ID for Tailscale authentication
+  ts-host:
+    required: true
+    description: The hostname or IP address of the target machine running the Komodo
+      stack. For ping and API access.
+  komodo-port:
+    required: true
+    description: The port on which the Komodo API is listening
+  komodo-api-key:
+    required: true
+    description: The API key for authenticating with the Komodo API
+  komodo-api-secret:
+    required: true
+    description: The API secret for authenticating with the Komodo API
+  komodo-stack-id:
+    required: true
+    description: The ID of the Komodo stack to update
+
+runs:
+  using: composite
+  steps:
+    - name: Tailscale
+      uses: tailscale/github-action@v4
+      with:
+        oauth-client-id: ${{ inputs.ts-oauth-client-id }}
+        audience: api.tailscale.com/${{ inputs.ts-oauth-client-id }}
+        tags: tag:ci
+        ping: ${{ inputs.ts-host }}
+
+    - name: Trigger Komodo stack update
+      shell: bash
+      run: |
+        curl -fsS -X POST "http://${{ inputs.ts-host }}:${{ inputs.komodo-port }}/write/CheckStackForUpdate" \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ inputs.komodo-api-key }}" \
+          -H "X-API-Secret: ${{ inputs.komodo-api-secret }}" \
+          -d '{"stack": "${{ inputs.komodo-stack-id }}"}'
