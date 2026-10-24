@@ -55,7 +55,8 @@ runs:
         for _ in $(seq 1 60); do
           update=$(komodo read/GetUpdate "{\"id\": \"$update_id\"}")
           if [ "$(jq -r .status <<< "$update")" = "Complete" ]; then
-            jq -r '.logs[] | "\(.stage): \(.stdout // "")\(.stderr // "")"' <<< "$update"
+            # Only Compose Up: other stages (Compose Config) contain resolved secrets
+            jq -r '.logs[] | select(.stage == "Compose Up") | "\(.stdout // "")\(.stderr // "")"' <<< "$update"
             [ "$(jq -r .success <<< "$update")" = "true" ] || { echo "Komodo deploy failed"; exit 1; }
             exit 0
           fi
