@@ -49,12 +49,9 @@ runs:
             -d "$2"
         }
 
-        # New images: redeploys only the services whose image changed
-        komodo write/CheckStackForUpdate "{\"stack\": \"$STACK\", \"wait_for_auto_update\": true}" > /dev/null
-
-        # Compose changes: CheckStackForUpdate ignores them, so redeploy
-        # (docker compose up) when the repo's files differ from what's deployed
-        update_id=$(komodo execute/DeployStackIfChanged "{\"stack\": \"$STACK\"}" | jq -r '._id["$oid"]')
+        # Pull + docker compose up: recreates only the services whose image or
+        # compose config changed (CheckStackForUpdate only handled new images)
+        update_id=$(komodo execute/DeployStack "{\"stack\": \"$STACK\"}" | jq -r '._id["$oid"]')
         for _ in $(seq 1 60); do
           update=$(komodo read/GetUpdate "{\"id\": \"$update_id\"}")
           if [ "$(jq -r .status <<< "$update")" = "Complete" ]; then
