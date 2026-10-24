@@ -35,9 +35,34 @@ runs:
 
     - name: Trigger Komodo stack update
       shell: bash
+      env:
+        KOMODO_URL: http://${{ inputs.ts-host }}:${{ inputs.komodo-port }}
+        KOMODO_KEY: ${{ inputs.komodo-api-key }}
+        KOMODO_SECRET: ${{ inputs.komodo-api-secret }}
+        STACK: ${{ inputs.komodo-stack-id }}
       run: |
-        curl -fsS -X POST "http://${{ inputs.ts-host }}:${{ inputs.komodo-port }}/write/CheckStackForUpdate" \
-          -H "Content-Type: application/json" \
-          -H "X-API-Key: ${{ inputs.komodo-api-key }}" \
-          -H "X-API-Secret: ${{ inputs.komodo-api-secret }}" \
-          -d '{"stack": "${{ inputs.komodo-stack-id }}"}'
+        komodo() {
+          curl -fsS -X POST "$KOMODO_URL/$1" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: $KOMODO_KEY" \
+            -H "X-API-Secret: $KOMODO_SECRET" \
+            -d "$2"
+        }
+
+        # New images: redeploys only the services whose image changed
+        komodo write/CheckStackForUpdate "{\"stack\": \"$STACK\", \"wait_for_auto_update\": true}" > /dev/null
+
+        # Compose changes: CheckStackForUpdate ignores them, so redeploy
+        # (docker compose up) when the repo's files differ from what's deployed
+        update_id=$(komodo execute/DeployStackIfChanged "{\"stack\": \"$STACK\"}" | jq -r '._id["$oid"]')
+        for _ in $(seq 1 60); do
+          update=$(komodo read/GetUpdate "{\"id\": \"$update_id\"}")
+          if [ "$(jq -r .status <<< "$update")" = "Complete" ]; then
+            jq -r '.logs[] | "\(.stage): \(.stdout // "")\(.stderr // "")"' <<< "$update"
+            [ "$(jq -r .success <<< "$update")" = "true" ] || { echo "Komodo deploy failed"; exit 1; }
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Timed out waiting for Komodo update $update_id"
+        exit 1
